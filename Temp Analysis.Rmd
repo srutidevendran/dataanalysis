@@ -1,0 +1,658 @@
+---
+title: "EAEEE 4257: Homework 2"
+author: "Sruti Devendran (sd3159)"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::html_docco:
+    highlight: kate
+    toc: true
+    toc_depth: 3
+---
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+# DO NOT edit this block
+knitr::opts_chunk$set(
+  cache=TRUE,
+  comment=NA,
+  message=FALSE,
+  warning=FALSE,
+  fig.width=12,
+  fig.height=7
+)
+```
+
+# HW2: Linear Regression and Trends
+
+__DUE: Monday, 19 Feb, 2018 11:59 PM__
+
+Over the past week or so we have been discussing trends and regression in class.
+At the same time, you've been learning some basic `R` programming on data camp.
+This homework will give you a chance to put these concepts together.
+You will get practice using `R` to visualize data, run regression models and trend tests, generate bootstrapts, and more.
+
+While we have focused on statistical attributes in the lecture and in the learning objectives listed above, in the homework I would like to focus on the application of these ideas, with a view to posing questions that someone doing the analysis may ask and exploring how we could apply the techniques demonstrated to gain insights into these questions, and/or identify some of the difficulties involves in applying these ideas.
+
+This homework is designed to be doable using only what we have learned in class, the assigned readings, and the `R` skills you have developed on data camp.
+However, the following references may be useful:
+
+- Course notes, particularly lectures 4 and 5
+- Helsel and Hirsch, Chapter 9 (linear models)
+- Helsel and Hirsch, Chapter 12 (trend analysis)
+- James et al "Introduction to Statistical Learning" (2013), Chatper 3 (linear regression)
+- R for Data Science book
+
+## Instructions
+
+Please edit the `template.Rmd` file that has been provided to include your name and your UNI in the `author` block at the top of this page.
+You will find the codes provided in this document to be very helpful, particularly for reading in data and running the types of models we will need.
+
+You will notice over the course of this semester that the assignments will gradually become more open-ended.
+Some questions have very specific "correct" answers, while others may be open to interpretation or may have many ways to answer.
+For open-ended questions, the most important thing is for you to describe:
+
+- What is the model and what are  the key variables we wish to look at?
+- What are the assumptions of the model?
+- How do I check whether the data support these assumptions and modify the model if necessary? 
+- What are the parameters of the model?
+- How should these parameters be estimated?
+- How do I assess the uncertainty in the estimation of the parameters from finite data?
+- How do I map this estimate of uncertainty in model parameters into a probabilistic statement about the outcome of interest?
+- What were the questions I was unable to answer given data or model limitations, and what may I need to address them?
+
+It is relatively easy to run code using a computer thanks to tools like `R`, the `tidyverse`, etc.
+You will find that you spend more time than you would like de-bugging your code, trying to load data into `R`, and reading package documentation -- that's annoying but you will get better at it with time.
+The truly challenging -- but also the most useful -- part of statistical analysis is being able to connect your intuition (and scientific knowledge) about the world, data you have collected, and mathematical (statistical) models.
+
+Please turn in your `.Rmd` file and the `.html` file which is output by running it.
+Questions that you are expected to answer or analysis that you are expected to carry out is indicated in bold **like this**
+
+## Working in Teams
+
+You are permitted to work in teams for this assignment, but (as the honor code you signed states) you must turn in your own work.
+Please list the name and UNI here of anyone you worked with at the end of this document.
+
+# Getting Started
+
+Here I will provide you with code to read in the data we will use.
+In future weeks you may be asked to download and read in data yourselves, which is more consistent with what you would do in a professional setting.
+
+## Context
+
+We've all heard about climate change; here we will analyze some climate data to form our own conclusions about global temperature.
+The data we will analyze comes mostly from http://www.johnstonsarchive.net/environment/co2table.html, but has been modified for the purposes of this class.
+For this homework, we won't queestion the quality of this data, but you should be aware that there is actually substantial uncertainty in measurements of historical climate variables, such as the global average methane levels in 1881.
+In general, you should question the data you are analyzing!
+
+We are going to think broadly about the following questions:
+- Is there a trend in global mean temperature? What is its statistical significance?
+- What drives global mean temperature?
+
+You should note that to assert causality we do still need a quantifiable physical mechanism, so here we are merely talking about whether a predictor variable could statistically explain the trend. 
+In large data sets it is easy to find spuriously correlated variables, or even non-spuriously correlated variables, that do not cause each other.
+For some hilarious examples, check out http://www.tylervigen.com/spurious-correlations.
+One definition of causality is based on precedence --  e.g., a variable (e.g. rainfall) whose evolution leads (say by a few months) the evolution of the response variable (e.g., end of year crop yield) can be construed as causal, and a statistical test (based on Bayes theorem) can be used to generally assess the strength of such causality.
+However, in the absence of good physical arguments, even such arguments are not truly causal. 
+
+You should also note that the available predictor variables may be mutually correlated and may have feedback to the temperature series -- e.g. an increase in temperature due to CO2 may in turn lead to increased atmospheric water vapor (don’t have data) which increases temperature in the short run, and eventually leads to much higher biological production (intermediate variable -- don’t have data) which could reduce carbon dioxide and reduce temperature.
+Since we don’t have data on intermediate variables, we can’t really explore these causal chains, but it is important to keep them in mind as we look at the effects of these variables individually and together -- we may want to use not just the concurrent value, but also prior values of these variables as predictors.
+Correlated predictors will allow us to only say something about the "joint" explanation of the trend by the predictors and we can’t say something unequivocally about the % of the trend ascribed to a particular predictor.
+
+
+## Loading Packages
+
+We'll start by getting the packages we need running.
+I like to use the `pacman` package manager which is the equivalent of calling `library()` or `require()` but also installs the package if it's not already installed.
+If you don't have it installed, you can run
+
+```{r, eval=FALSE}
+#install.packages('pacman')
+```
+
+And then we can call the packages we need like
+
+```{r packages}
+pacman::p_load(
+  dplyr, # data manipulation
+  readr, # reading in data
+  ggplot2 # visualizing data
+)
+```
+
+## Read in Data
+
+We're going to work with the global temperature data contained in `glob.csv`.
+It was included with HW1 on Courseworks -- here I am assuming it is in the same folder as my `RMarkdown` document.
+Let's read it in:
+
+```{r read_data}
+temp <- readr::read_csv('glob.csv') %>%
+  select(Year, Temp, CO2, CH4, sunspot, volcanic) %>%
+  setNames(tolower(names(.))) # variable names are lower case
+glimpse(temp)
+```
+
+We can see that the data set provides information not only on temperature (`temp`) but also on time (`year`), on global $\text{CO}_2$ and $\text{CH}_4$ concentrations, on sunspot activity, and on volcanic eruptions.
+
+## Exploratory Analysis
+
+Which variables look to be most closely related? What physical mechanisms may explain this?
+
+The following pairs of variables are closely related: 
+Year and temperature are closely related. They appear to have a quadratic relationship
+Temperature and CH4 related. They also appear to have a quadratic relationship
+Temperature and Carbon DIoxide are linearly related: with clustering of points in the earlier period of the sampling. 
+
+The relation between the Year and temperature can be explained by global warming, which has started after the Industrial Revolution.
+It is from the the Industrial Revolution, that there is an increase in the concentration of greenhouse gases. This explains the relationhip between 
+CO2 and Temp. 
+Methane is also a strong greenhouse gas. It contributes to global warming, to a larger extent than an equivalent amount of carbon dioxide
+gas. This physical explanation supports the statistical relationship
+between the Temperature and CH4. 
+
+These variables are very closely related, and 
+easily a curve can be fitted into the points. The deviation of the points from
+the curve will be very less. These variables are very closely related. 
+
+Year and CO2 have a quadratic relation- the relation seems to be very strong
+After the Industrial Revolution, the greenhouse gas conceentrations increased. Since the 
+relation is drawn from the years after the industrial revolution, it appears to 
+be consistent with this physical relationship
+Year and CH4 also related-very closely related-tight
+After the Industrial Revolution, the methane concentrations increased becasue of various avtivities. This 
+further explains the strong statistical relationship between the two variable
+
+C02 and CH4 are closely related-very tight: quadratic relationship
+This means that when carbon dioxide emissions increases, the methane concentration also increased.
+
+
+```{r}
+ggplot(temp, aes(temp, year)) + geom_point() + ggtitle('Temperature as a function of time')
+pairs(temp, main="Pairs Plot")
+```
+
+
+# Analysis
+
+In this section we will explore whether there is a time trend of global mean temperature.
+
+## Is There a Trend?
+There is a clear time trend of global mean temperature. There is an increase in the 
+global mean temperature with time. 
+
+### Temperature Differences
+
+We would like to know whether the temperatures towards the end of our data or the middle of our data is the same.
+The following code will create a variable `time_period` in the `temp` variable by dividing the `year` into 4 equal periods.
+I arbitrarily chose 4 bins for time; you should explore using different numbers of bins (see the `ntile` call below) to see if your results change.
+
+```{r make_time_period}
+temp_period <- 
+  temp %>% 
+  mutate(time_period = ntile(year, 4))
+glimpse(temp_period)
+```
+
+```{r}
+group <- temp_period %>%
+          group_by(time_period)
+summarize(group)
+```
+
+Pick a measure of centrality and use `group_by` to group the data by the `temp_period` variable we created with the `summarize` command.
+```{r}
+ggplot(temp_period, aes(x=temp))+geom_histogram(bins=15)+facet_wrap('time_period')
+```
+
+Here we have characterized temperature using a meausre of centrality.
+Why did you choose that measure of centrality?
+
+We chose temp as a measure of centrality, because
+-It allows us to find, the number of days in that particular time period, which has that temperature
+-Such a type of graph allows us to find, the number of days for a particular temp. This is useful to estimate the number of hot days, or the number of cold days in a particular year.
+
+
+If we were instead interested in the probability of an extremely hot or extremely cold year, how might our analysis change?
+-Find the mean temperature for each year
+-Then find a threshold, above which the increase is considered as 'extreme'. 
+-Count the number of years above that threshold
+-At this stage, we could also plot a histogram-counting the years with mean temp on the x-axis
+-Find the probability of those years in the century
+
+
+One way to answer this question is by visualizing the data.
+Call `ggplot` on `temp_period` and use the aesthetics argument to map `x=temp`.
+To create histograms in `ggplot`, use `geom_histogram(bins = 15)` (you can use a different number of bins if you'd like).
+Then add `facet_wrap('time_period')` so that each time period appears in a separate plot.
+Have your conclusions about temperature changed?
+
+The graph gives me an idea of temperature distributions for each timeperiod for all the years.
+While my initial conclusions about the temperature has not still changed, because the trend was computed 
+based on the mean temperature for each year, this graph gives an idea of temperature distributions for each timeperiod, accross all the years. 
+It looks more or less like a normal distribution for the 1,2,3 timeperiods. But for the fourth timeperiod, it is quite different.
+The graph also shows the seasonality(or the presence of seasons) in each timeperiod of the year. 
+If we are plotting the timeseries for each timeperiod, we would be able to find the changes in the temperature in the timeperiod over the years. 
+
+### Linear Trend
+
+First we will estimate the linear trend in the entire data set.
+We will do this in two ways: (i) using least squares (OLS) to fit the model 
+$$\text{temp}_t = \alpha + \beta \text{time}_t + \epsilon_t$$
+and (ii) using the Mann-Kendall trend test.
+
+To fit a least squares trend test, use linear regression model using the `lm()` command.
+The general way to use this on a `tibble` or `data.frame` is to call `lm(y ~ x1 + x2 + x3 + x4, data=my_data)`.
+For example, you might call `lm(mpg ~ cyl + disp, data=mtcars)`.
+Write a linear model where temperature is a function of time using the `temp_period` data and call it `lm1`.
+Then call `summary(lm1)` and find the coefficient $\beta$.
+```{r}
+lm1 <-lm(temp~year, data = temp)
+summary(lm1)
+lm1$coefficients['year']
+```
+
+
+Now we will fit a Mann-Kendall test to the data.
+To do that we'll need to load the `Kendall` library so that we can call the `MannKendall` function.
+
+```{r}
+pacman::p_load(Kendall)
+```
+
+Then we want to call `MannKendall` on the temperature.
+You can use this using `data.frame` notation 
+
+```{r, eval=FALSE}
+MannKendall(temp$temp)
+```
+
+or using `tidyverse` syntax 
+
+```{r, eval=FALSE}
+temp %>% pull(temp) %>% MannKendall()
+```
+
+Look at the documentation for the `MannKendall` package and figure out what the output of this test means.
+
+Output of MannKendall Test
+
+The Kendall's tau test gives the following result:
+1. Tau Statistic
+2. 2-sided pvalue
+
+This is a test for monotonic trend in a time series z[t] 
+based on the Kendall rank correlation of z[t] and t.
+It is a non-parametric test.
+Tau statistic is the rank correlation coefficient. Lower the p value, the more significant it is the rank correlation coefficient.  
+The tau value obtained for this dataset is 0.692.
+
+
+What are the mathematical assumptions that each trend test makes?
+The assumptions of this test are:
+-Model form is correct: y is linearly related to year
+-Data used to fit the model are representative of data of interest
+-Variance of the residuals is constant( is homoscedastic)
+-The residuals are independent. 
+
+
+Do you think they are justified?
+I think the last two assumptions are not justified in this case. The 
+variance of the residuals is not constant(saw in the previous case that in linear regression, it wwas a curve, and not a stratight line. 
+The magnitude of increase for each of the points is not the same. So it is hard to make an assumption that there is an monotonic increase), 
+and the residuals are not independent
+
+### Trend by Period
+
+Now that we have looked at the trend as a function of time, we also want to look at the trend separately for each time period.
+To do this we will use the `temp_period` data and `group_by` the `time_period` variable.
+When we call summarize, we can apply any arbitrary function.
+
+For example, to get the coefficient $\beta$ from our OLS model, we could note that calling `lm1$coefficients['year']` gives us the coefficient $\beta$.
+To incorporate this into our workflow, use `summarize(beta_hat = lm(temp ~ year)$coeff['year'])` after the appropriate `group_by` command.
+
+Now calculate the Mann-Kendall coefficient for each time period -- you can use something like `summarize(tau = MannKendall(temp)$tau)`.
+```{r}
+temp_period %>%
+  group_by(time_period) %>%
+summarize(beta_hat = lm(temp ~ year)$coeff['year'])
+
+temp_period %>%
+  group_by(time_period) %>%
+  summarize(tau = MannKendall(temp)$tau)
+```
+
+What do you think are some pros and cons of "binning" our data into different time periods?
+How do the results differ from results for the whole time period?
+What is your interpretation of these results?
+What do you think may be going on physically?
+
+Binning the data into different time periods, allows us to find out what is 
+going on in each timeperiod. 
+Suprised to see that in the first timeperiod, the correlation is negative.In the third timeperiod, the correlation is small as compared to the rank correlation
+for the whole year. In the second and in the fourth time period, the correlation is similar to what is happening for the whole year. 
+The first timeperiod corresponds to the winter. So this actually means that winters are becoming more colder, and the summers are getting hotter. 
+
+## What Drives Global Mean Temperature?
+
+In the previous section we considered only time trends.
+However, we have other predictor variables that may help to explain global mean temperature.
+Here we will build several linear regression models to predict global mean temperature given the year, the carbon dioxide and methane levels, and the sunspot and volcanic activity values using different sets of predictors.
+
+### Multiple Linear Regression
+
+Let's start by building a multiple linear regression model where the temperature depends linearly on the available predictors.
+We can do this by calling `lm(temp ~ year + co2 + ch4 + sunspot + volcanic)`, or we can use the shortcut `lm(temp ~ .)` where the `.` indicates "all other columns".
+Don't forget to include the `data=temp` argument!
+Call this model `temp_model_1`.
+Then call `summary(temp_model_1)` to view the model
+
+How much variance does your model explain?
+What predictors does your model interpret as significant?
+What is the meaning of these predictors?
+
+The variance explained by the model is 83.43% (Used Multiple R-squared *100)
+'Year' and 'CO2' are interpretted as significant.(They have three stars)
+The predictors are temp, year, co2, ch4, sunspot, volcanic. The linear models,
+fits into the model, and we can use these predictors to predict the temperature.
+The predictors with higher significance are more influencing in predicting the temperature variable.
+
+
+To look at the model diagnostic plots we have been discussing in class, run:
+```{r}
+temp_model_1 <- lm(data=temp, temp ~ year + co2 + ch4 + sunspot +volcanic)
+summary(temp_model_1)
+plot(temp_model_1)
+```
+
+```{r, eval=FALSE}
+par(mfrow = c(2, 2)) # set up 2 by 2 plot
+plot(temp_model_1) # built-in diagnostic plots
+par(mfrow = c(1, 1)) # go back to 1 by 1 plots (default)
+```
+
+What do you learn from the model diagnostics?
+In particular, look at the "Residuals vs Fitted" plot.
+What does an ideal plot look like?
+What do you observe?
+Is this a problem?
+
+From the model diagnostics, the residuals are not completely random
+There is a clustering of points in the begining or the left side of the 
+graph. I guess that there is a problem with the fitted model. Ideally for 
+the best fit model, I would expect the residuals to be completely in normal 
+distribution. In this case, there appears to be a slight skew.
+
+
+### Bootstrapping Uncertainty
+
+Now we will consider the uncertainty in our linear model with a straightforward bootstrap.
+Let's say we want to predict the temperature in `r max(temp$year)` if we know all the predictors in that same year (in reality, of course, this is unlikely to ever happen, but this is a homework problem!).
+To fit the model, of course, we can't use the data from 2014!
+
+To generate these bootstrapped estimates, we:
+
+1.  Use a for loop to repeat the same procedure many times
+2.  Re-sample the data, excluding the year we are predicting
+3.  Fit a linear model on the new data
+4.  Use the `predict` function to get the prediction of our linear model on the future data. We use the `newdata` argument to predict on new data which is the 2014 temperature.
+5.  Compare the uncertainty in our estimate
+
+Here is some code for how one might do this.
+
+```{r}
+n_boot <- 200 # number of bootstrapped linear models
+yhat <- rep(NA, n_boot) # initialize place for our estimates to go
+for (n in 1:n_boot){ 
+  new_data <- temp %>% 
+    filter(year < max(year)) %>% 
+    sample_frac(size = 1, replace = TRUE)
+  lm_i <- lm(temp ~ ., data = new_data)
+  yhat[n] <- predict(lm_i, newdata=filter(temp, year==max(year)))
+
+}
+```
+```{r}
+
+boxplot(yhat[], xlab = "")
+hist(yhat[])
+
+
+```
+
+Using this bootstrap technique, what is the uncertainty in our estimates of `r max(temp$year)`?
+Visualize this uncertainty with a plot or compute a measure of spread.
+
+The uncertainity is visualized with the help of a boxplot graph. 
+
+
+Thus we can see that just by considering sampling variations -- shuffling the observed data with replacement -- we can capture substantial uncertainty in prediction.
+Do you think this is an upper or lower bound on total uncertainty?
+
+Bootstapping is based on the assumption that the underlying 
+distribution is empirical, and provides a lower bound on total
+uncertainity.
+
+We can use this approach -- bootstraping observed data and estimating some quantity of interest on the resampled data -- for many things.
+Here we used it to compute the uncertainty in estimation on one new data point.
+We could also use it to estimate the uncertainty of a particular parameter, of a statistical test, of a summary statistic, of predictions on many new data points, etc.
+Bootstraps will be an important tool for us to address uncertainty this semester, so if you don't understand this code please get assistance as soon as possible!
+
+### Considering Auto-Correlation
+
+Because our data is a time series and because the global climate is a system with some "memory", it may have substantial autocorrelation.
+Let's add $\text{temp}_{t-1}$ as a predictor into our model.
+We can do this with the `lag()` function in `dplyr`:
+
+```{r}
+temp_lag <- temp %>%
+  mutate(lag_temp = lag(temp, 1)) %>%
+  filter(!is.na(lag_temp))
+glimpse(temp_lag)
+```
+
+We used to have data from 1880 -- why does the data now start in 1881?
+
+Create a linear model where we add in the previous year's temperature as a predictor.
+Call this `temp_model_2`.
+```{r}
+temp_model_2 <- lm(temp ~ lag_temp, data = temp_lag)
+plot(temp_model_2)
+
+```
+
+
+Generate the diagnostic plots as before.
+Does this do a better job?
+Why or why not?
+What do you suspect is going on physically?
+
+
+I think this definitely did a better job. The symmetrical distribution accross the mean value 0
+of the residuals, 
+The residual Standard error is a measure of the quality of a linear regression
+fit. The Residual Standard Error is the average ampunt that the response
+will deviate from the true regression line. The residual standard error in
+this model, is comparatively less as compared to the previous models. 	
+Mutliple regression provides a measure of how well the model is fitting the
+actual data. The value is 0.85, and it means that 85% of the variance is 
+explained by this model. 
+The temperature of the present year, is correlated to the temperature of the 
+previous year. There is a memory in the data response. 
+
+### Polynomial Fit
+
+Instead of using the predictors, we could fit a polynomial directly to the temperature data.
+This has the advantage of needing only time as a predictor!
+
+To create a polynomial fit, we use syntax like
+
+```{r, eval=FALSE}
+# lm(y ~ poly(x, 3, raw=TRUE))
+```
+
+Pick a polynomial degree and create a polynomial model where temperature depends only on the year.
+Call this `temp_model_3`.
+
+```{r}
+temp_model_3 <- lm(temp ~ poly(year,4, raw=TRUE), data = temp)
+plot(temp_model_3)
+summary(temp_model_3)
+```
+
+
+To see how well the model fit our data, we can use the following procedure with base `R` graphics:
+
+```{r, eval=FALSE}
+plot(temp$year, temp$temp, xlab="Year", ylab="Temperature", main="Polynomial Fit")
+lines(temp$year, predict(temp_model_3))
+```
+
+Call the plot diagnostics from before.
+How does this model do?
+What degree polynomial did you choose?
+Why?
+What are some potential problems of fitting a polynomial to data?
+
+The polynomial model did better than all the models. 
+The degree chosen is 4.
+It was better because the residuals are better symmetrically distributed 
+from the mean 0(-0.277 to 0.2781). 
+The value of the multiple R square is 0.8538, and so the variance explained
+by the model is 85.38%
+
+
+```{r}
+n_boot <- 50
+for (n in 1:n_boot){
+  new_data <- 
+    temp %>%
+    sample_frac(size = 1, replace = TRUE) %>%
+    arrange(year)
+  poly_i <- lm(temp ~ poly(year, 2, raw=TRUE), data = new_data)
+  predicted <- predict(poly_i, newdata = temp)
+  if (n == 1){
+    plot(temp$year, predicted, type='l', col=alpha('black', 0.3))
+  } else {
+    lines(temp$year, predicted, col=alpha('black', 0.3))
+  }
+}
+```
+
+Modify this code for a higher-order polynomial.
+What happens to your uncertainty?
+Why?
+
+The uncertainity increases for a higher-order polynomial. It is revealed by 
+the bootstrap. This means that the model is not a great fit. The degree 3
+polynomial was a better fit as compared to the third degree polynomial.
+Bootstrap is important to find out whether the model is a good fit or not. 
+The summary of the linear model, didnt actually reveal this, but bootstrapping
+did. 
+
+
+
+```{r}
+n_boot <- 50
+for (n in 1:n_boot){
+  new_data <- 
+    temp %>%
+    sample_frac(size = 1, replace = TRUE) %>%
+    arrange(year)
+  poly_i <- lm(temp ~ poly(year, 4, raw=TRUE), data = new_data)
+  predicted <- predict(poly_i, newdata = temp)
+  if (n == 1){
+    plot(temp$year, predicted, type='l', col=alpha('black', 0.3))
+  } else {
+    lines(temp$year, predicted, col=alpha('black', 0.3))
+  }
+}
+```
+
+### Another Model
+
+If you would like to create another model, do so here.
+You are not required to create another model, but if you do call it `temp_model_4`.
+Describe your conceptual framework, implement your model, and provide some diagnostic plots.
+Bootstrap the uncertainty.
+
+
+### Prediction
+
+In this section you do not need to perform any computation.
+
+Let's say that our true aim was to estimate the global mean temperature in 2050.
+This is easy for models which depend only on time (i.e. the polynomial fit) but more difficult for models which have more coefficients which we must also predict in the future.
+Describe how you would estimate the global mean temperature in 2050 using each of the models above.
+What are the advantages of each approach?
+What are some problems you anticipate with each approach?
+
+
+
+Using the lm1 model:
+It is a simple model, with only one predictor
+Pros: Just need to input the year
+Cons: The variance captured by the model is not sufficient.
+
+Using temp_model_1:
+Model with multiple predictors: Multiple regression model
+Pros: More accurate, because the variance captured by the model is higher.
+Cons: Requires the input of many parameters to predict the temperature
+for the year 2050. There are 6 coefficients in this model. We need to estimate
+all the 6 coeffiencts in the year 2050. This could be really challenging, and
+since we are estimating the variables, there is a possibility that they could
+be inaccurate.
+
+Using temp_model_2: 
+Model with the time_lag
+Pros: Better accuracy and needs only one input variable. 
+Cons: 
+
+Using temp_model_3: Polynomial Model
+Pros: Only requires one variable, i.e the year to predict the temperature in 2050 
+The bootstrap method also revealed that the model is a good fit
+Cons: The temp is predicted based on only one variable, instead of many variables which are really 
+important in predicting the temperature. This sounds a little strange to me.
+
+
+## Survey
+
+Did you work with anyone on this homework (_this is allowed_)?
+Please list their names and UNI like this:
+
+- An Chi Ho (ah3508)
+- Miriam Nielson (mn2812)
+
+Did you use any of the suggested references?
+Yes
+If so, how helpful was it
+It really helped me understand the interpretations of the graphs
+
+About how long did you spend on this homework?
+About 10 hours
+
+Which statistical concept do you think you understood the best from this homework? 
+Bootstrap
+The worst?
+Verifying the model accuracy: Those methods still not clear yet. 
+Which programming concept introduced in this homework was most confusing?
+Using the bootstrap to plot the uncertainity in the model. 
+
+## Grading Rubric
+
+- Compiling & running your document: 10
+- Exploratory analysis: 10
+- Temperature differences: 10
+- Linear / monotonic trend: 13
+- Trend by period: 10
+- Multiple linear regression: 12
+- Bootstrap: 5
+- Autocorrelation: 8
+- Polynomial fit: 10
+- Optional model: up to +5 
+- Prediction: 10
+
+Your interpretation of results is a very important component of your grade on each question.
+Approximately half of the points for each question will be awarded for correct coding / calculation / visualization.
+The other half will be for your interpretation of these results.
+If you made a mistake with your calculation but correctly interpret the results you have, you will get full points.
+Many of the discussion questions are open-ended, so there is not a single "right" answer; try to explain your thinking in the context of the concepts we have discussed in class.
+
