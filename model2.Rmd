@@ -1,0 +1,99 @@
+---
+title: "hw3_Question2"
+author: Sruti Devendran, sd3159
+date: 3/1/2018
+output: html_document
+---
+
+## Analysis of the aquifer pollutants
+
+### Introduction
+We are looking at data on aquifer pollutants. This data set is collected from 42 small urban drainage basins located in several cities around the United States and sourced from the book "Statistical Methods in Water Resources" by D.R. Helsel and R.M. Hirsch (this texbook further cites Mustard et al., 1987).
+
+We are most interested in understanding how the total nitrogen load in these basins can be predicted based on the other 8 variables (listed below).
+
+The packages used in this exercise are: dplyr, ggplot2, mvinfluence, MASS
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+# DO NOT edit this block
+knitr::opts_chunk$set(
+  cache=TRUE,
+  comment=NA,
+  message=FALSE,
+  warning=FALSE,
+  fig.width=12,
+  fig.height=7
+)
+```
+
+
+## Analysis 
+```{r}
+if(!require(pacman)) install.packages('pacman')
+pacman::p_load(dplyr, readr)
+library(MASS)
+```
+```{r, message=FALSE}
+app15 <- read_csv('appc15.csv') %>%
+  setNames(tolower(names(.))) # variable names are lower case
+glimpse(app15)
+```
+
+
+The dataset has 42 observations, and 9 variables. To check if there is any relationship between the explanatory variables I visualized them using the pairs plot. 
+
+
+```{r}
+pairs(app15, pch=10, cex =0.9, main = "Pairs Plot")
+lm1 <- lm(nitrogen ~ logda+ logimp + mjtemp + msrain + pres+ pnon+ pcomm + pind, data= app15)
+summary(lm1)
+```
+
+It is not quite obvious, of how the relationship is between the nitrogen and other explanatory variables. I took the log of nitrogen variable, so that the presence of a negative intercept wont influence the value of nitrogen. I fitted a linear model with all the variables in the dataset. 
+
+```{r}
+lm2 <- lm(log10(nitrogen) ~ logda+ logimp + mjtemp + msrain + pres+ pnon+ pcomm + pind, data= app15)
+summary(lm2)
+par(mfrow=c(2,2))
+plot(lm2)
+hist(lm2$residuals, main="Distribution of the residuals for lm2")
+```
+The distribution of the residuals looks normal, and the model is a great fit(Multiple R Squared 0.58), but its a complex model with lot of variables in it-which are expensive to measure. Also, from the summary of the fit, I found that there are many variables present in the model with low significance. Goal is to do a step wise procedure using a step wise algorithm , to find out the significant variables to use in the model. 
+
+```{r}
+lm3 <- step(lm2, direction="both")
+summary(lm3)
+par(mfrow=c(2,2))
+plot(lm3)
+hist(lm3$residuals, main = "Plot of the distribution of the residuals")
+
+```
+
+
+This gives a very good model. 
+
+Stepwise algorithm returns the following model as the best model: 
+
+The final model :
+log10(nitrogen) ~ logda + mjtemp + msrain + pres + pcomm, is chosen as the best model for this dataset. 
+To check for points which influence the regression curve, and to find the points which have high standardized residual values and high leverage, I used an Influence Plot
+```{r}
+# Cook's D plot
+# identify D values > 4/(n-k-1) 
+library(mvinfluence)
+cutoff <- 4/((nrow(app15)-length(lm3$coefficients)-2)) 
+plot(lm3, which=4, cook.levels=cutoff)
+# Influence Plot 
+influencePlot(lm3,	id.method="identify", main="Influence Plot", sub="Circle size is proportial to Cook's Distance" )
+```
+From this plot, there is one particular point, that has high standardized residual value and a large hat value. This point clearly influences the regression. This is one drawback of this model. If we remove that point, then the regression line will change. 
+
+### Summary and Conclusions
+
+Using a stepwise AIC algorithm, we can find the explanatory variables which are significant and can be included in the model. From the stepwise algorithm, the best model found was
+log10(nitrogen) ~ logda + mjtemp + msrain + pres + pcomm. 
+

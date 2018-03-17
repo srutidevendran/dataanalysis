@@ -1,0 +1,61 @@
+---
+title: "Regression Tools for HW3"
+author: "James Doss-Gollin"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::html_docco:
+    highlight: kate
+    toc: true
+    toc_depth: 3
+---
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+# DO NOT edit this block
+knitr::opts_chunk$set(
+  cache=TRUE,
+  comment=NA,
+  message=FALSE,
+  warning=FALSE,
+  fig.width=12,
+  fig.height=7
+)
+```
+
+This worksheet will provide with with some useful code for completing HW3.
+As usual, start with loading in some useful package
+
+```{r}
+if(!require(pacman)) install.packages('pacman')
+pacman::p_load(dplyr, ggplot2, readr)
+```
+
+We'll work with the built-in `mtcars` dataset
+
+```{r}
+mtcars
+```
+
+Linear models look like
+
+```{r}
+my_lm <- lm(disp ~ hp + wt + qsec, data=mtcars)
+summary(my_lm)
+```
+
+If we don't want to fit an intercept we write `-1`:
+
+```{r}
+my_lm <- lm(disp ~ hp + wt + qsec - 1, data=mtcars)
+summary(my_lm)
+```
+
+We can access elements of the model with
+
+```{r}
+my_lm$coefficients['hp']
+```
+
+or similar.
+
+If there are specific commands you would like help with, please post on the Slack `r-computing` channel and I will update this document on Courseworks.
+

@@ -1,0 +1,200 @@
+---
+title: "Reading Data for HW3"
+author: "James Doss-Gollin"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::html_docco:
+    highlight: kate
+    toc: true
+    toc_depth: 3
+---
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+# DO NOT edit this block
+knitr::opts_chunk$set(
+  cache=TRUE,
+  comment=NA,
+  message=FALSE,
+  warning=FALSE,
+  fig.width=12,
+  fig.height=7
+)
+```
+
+This worksheet will provide you with some commands for reading in the raw data.
+
+```{r}
+if(!require(pacman)) install.packages('pacman')
+pacman::p_load(dplyr, readr)
+```
+
+Now we'll read in our data.
+Make sure your path to the data points exactly to the file -- you can use `getwd()` and `list.files()` to check this (use the built-in help function to learn more about these commands).
+This will also provide you with an explanation of the column names and units.
+
+## Appendix 15
+
+We'll start with Appendix 15.
+The definitions of all nine variables are as follows:
+
+- `logca` log contributing area
+- `logimp` log impervious area
+- `mjtemp` mean minimum January temperature
+- `msrain` mean seasonal rainfall
+- `pres` percentage of area residential
+- `pnon` percentage of area non-urban
+- `pcomm` percentage of area commercial
+- `pind` percentage of area industrial
+- `nitrogen` total nitrogen load
+
+```{r, message=FALSE}
+app15 <- read_csv('appc15.csv') %>%
+  setNames(tolower(names(.))) # variable names are lower case
+glimpse(app15)
+```
+
+## Appendix 16
+
+Next read in the data from appendix 16.
+The columns are:
+
+- `tds` total dissolved salts
+- `uranium` uranium concentration
+- `bicarbonate` a variable that is either 0 or 1 indicating whether there was at least 50% of a bicarbonate present
+
+```{r, message=FALSE}
+app16 <- read_csv('appc16.csv') %>%
+  setNames(tolower(names(.))) # variable names are lower case
+glimpse(app16)
+```
+
+```{r}
+train.size <- 0.5
+train.index <- sample.int(length(app16$uranium), round(length(app16$uranium) * train.size))
+train.sample <- app16[train.index,]
+valid.sample <- app16[-train.index,]
+pairs(app16, col="red")
+```
+
+```{r}
+fit1 <- lm(uranium ~ tds + bicarbonate, data = app16 )
+summary(fit1)
+plot(fit1)
+####Best PLot
+uraniumdata <- log10(app16$uranium)
+fit21 <- lm(log10(uranium) ~ tds + bicarbonate, data =app16)
+fit22 <- lm(log10(uranium) ~ sqrt(tds) + bicarbonate, data =app16)
+fit23 <- lm(uranium ~ sqrt(tds) + bicarbonate, data = app16)
+
+PredictFit1 <- predict(fit1, newdata = valid.sample)
+Predictfit45 <- predicy(fit1, newdata= app16)
+cor(valid.sample$uranium, PredictFit45)
+acf(fit1$residuals)
+ 
+ 
+ uraniumdata <- log10(app16$uranium)
+ 
+
+acf(fit1$residuals, main="Autocorrelation of the residuals")
+
+fit2 <- lm(uranium ~ tds * bicarbonate, data = train.sample)
+summary(fit2)
+PredictFit2 <- predict(fit2, newdata = valid.sample)
+acf(fit2$residuals, main="Autocorrelation of the residuals fit2")
+plot(valid.sample$tds, valid.sample$uranium, col = "red")
+ lines(valid.sample$tds, PredictFit2, col="blue")
+
+
+#Fit 4 is great, with a large Multiple R Quared, but residuals are not randaom
+
+fit4 <- lm(uranium ~ tds + bicarbonate + tds * bicarbonate, data= train.sample)
+summary(fit4)
+PredictFit4 <- predict(fit4, newdata = valid.sample)
+acf(fit4$residuals, main="Autocorrelation of the residuals fit4")
+
+plot(valid.sample$tds, valid.sample$uranium, col = "red")
+ lines(valid.sample$tds, PredictFit2, col="blue")
+
+plot(temp$year, temp$temp, xlab="Year", ylab="Temperature", main="Polynomial Fit")
+lines(temp$year, predict(temp_model_3))
+
+ plot(valid.sample$uranium, PredictFit4)
+
+ 
+#Modifying Fit 4, removing the insignificant variables from the linear regression
+ fit5 <- lm(uranium ~ tds + tds * bicarbonate, data= train.sample)
+summary(fit5)
+plot(fit5)
+
+
+PredictFit4 <- predict(fit4, newdata = valid.sample)
+acf(fit4$residuals, main="Autocorrelation of the residuals")
+ plot(valid.sample$tds, PredictFit4)
+ 
+cor(valid.sample$uranium, PredictFit4)
+ 
+data1 <- app16  %>%
+          filter(app16$tds <700)
+data2 <- app16  %>%
+          filter(app16$tds > 700)
+
+#Fit 6 is the best model so far
+fit6 <- lm(log10(uranium) ~ tds+ bicarbonate, data = app16)#Highest percentage of the intercept significances
+
+uranium <- log(app16$uranium)
+fit6 <- lm(uranium ~ tds+ + log10(bicarbonate)+tds * bicarbonate, data = app16)
+
+fit6 <- lm(uranium ~ tds+ tds * bicarbonate, data = train.sample)
+PredictFit6 <- predict(fit6, newdata = valid.sample)
+acf(fit6$residuals, main="Autocorrelation of the residuals")
+cor(valid.sample$uranium, PredictFit6)
+plot(valid.sample$tds, valid.sample$uranium)
+lines(valid.sample$tds, PredictFit6)
+
+
+
+coefs = as.data.frame(summary(m1)$coefficients[-1,1:2])
+names(coefs)[2] = "se" 
+coefs$vars = rownames(coefs)
+
+ggplot(coefs, aes(vars, Estimate)) + 
+  geom_hline(yintercept=0, lty=2, lwd=1, colour="grey50") +
+  geom_errorbar(aes(ymin=Estimate - 1.96*se, ymax=Estimate + 1.96*se), 
+                lwd=1, colour="red", width=0) +
+  geom_errorbar(aes(ymin=Estimate - se, ymax=Estimate + se), 
+                lwd=2.5, colour="blue", width=0) +
+  geom_point(size=4, pch=21, fill="yellow") +
+  theme_bw()
+
+
+
+##Question 3
+pairs(app15)
+lm1 <- lm(nitrogen ~ logda+ logimp + mjtemp + msrain + pres+ pnon+ pcomm + pind, data= app15)
+summary(lm1)
+
+coefs = as.data.frame(summary(lm1)$coefficients[-1,1:2])
+names(coefs)[2] = "se" 
+coefs$vars = rownames(coefs)
+
+ggplot(coefs, aes(vars, Estimate)) + 
+  geom_hline(yintercept=0, lty=2, lwd=1, colour="grey50") +
+  geom_errorbar(aes(ymin=Estimate - 1.96*se, ymax=Estimate + 1.96*se), 
+                lwd=1, colour="red", width=0) +
+  geom_errorbar(aes(ymin=Estimate - se, ymax=Estimate + se), 
+                lwd=2.5, colour="blue", width=0) +
+  geom_point(size=4, pch=21, fill="yellow") +
+  theme_bw()
+
+lm2 <- lm(nitrogen ~ logda, data= app15)
+summary(lm2)
+#Looking at
+lm3 <- lm(log(nitrogen) ~ logda+msrain+ mjtemp, data = app15)
+summary(lm3)
+
+```
+lm1 <- lm(log10(nitrogen) ~ logda+ logimp + mjtemp + msrain + pres+ pnon+ pcomm + pind, data=)
+fit37 <- step(lm1, direction="both")
+
+
+

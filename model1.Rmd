@@ -1,0 +1,159 @@
+---
+title: "hw3_Question1"
+author: Sruti Devendran, sd3159
+output: html_document
+---
+
+## Analysis of the Aquifer pollutants
+
+### Introduction
+ The data is from the Ogalla Aquifer in Texas - and sourced from the book "Statistical Methods in Water Resources" by D.R. Helsel and R.M. Hirsch. Our goal of this analysis is to quantify the relationship between Uranium, dissolved salts and bicarbonate using a regression model.
+ 
+ Packages used in this: dplyr, ggplot2, mvinfluence
+```{r knitr_init, echo=FALSE, cache=FALSE}
+# DO NOT edit this block
+knitr::opts_chunk$set(
+  cache=TRUE,
+  comment=NA,
+  message=FALSE,
+  warning=FALSE,
+  fig.width=12,
+  fig.height=7
+)
+```
+
+
+```{r}
+if(!require(pacman)) install.packages('pacman')
+pacman::p_load(dplyr, readr)
+```
+The data we will be working with is called Appendix 16, which includes the following variables:
+
+tds: total dissolved salts
+uranium:  uranium concentration
+bicarbonate: a variable that is either 0 or 1 indicating whether there was at least 50% of a bicarbonate present
+Here we import appendix 16, and will refer to this dataset as app16
+
+```{r, message=FALSE}
+app16 <- read_csv('appc16.csv') %>%
+  setNames(tolower(names(.))) # variable names are lower case
+glimpse(app16)
+install.packages -> contrib.url
+```
+
+Looking at the data, there are 44 variables and 3 observations. In this question, I fit a linear model to predict the variable uranium, using the explanatory variable tds and bicarbonate.  
+
+
+```{r}
+library(ggplot2)
+```
+
+## Analysis 
+
+Used pairs plot to visualize any relationship between the variables, and to check if there is a collinearity between the explanatory variables. 
+```{r}
+pairs(app16, pch = 10, cex=0.9, main = "Pairs Plot")
+```
+
+Bicarbonate is a binary variable. It can take values 0 and 1. Although the plot of tds vs uranium, looks a little nonlinear, I thought to fit a linear model, since the number of observations are very small. Fitting a polynomial will lead to overfitting. Assuming there is a linear relationship between the explanatory variables(tds and uranium) and the predictor variable(uranium), I fit a model like this: 
+
+```{r}
+fit1 <- lm(log10(uranium) ~ tds + bicarbonate, data =app16)
+summary(fit1)
+par(mfrow=c(2,2))
+plot(fit1)
+hist(fit1$residuals, main="Distribution of residuals for fit1")
+```
+
+I observe that the distribution of the residuals are normal, the points fit really well.
+The value of the multiple R squared is 0.5421, which is pretty descent. But in the residuals vs fitted graph, I observe that the points are not normally distributed. There is a clustering in the right of the graph. 
+In an effort to modify the dataset, group the dataset so that the relationship looks more linear, I looked at the pairs plot. 
+
+Looking at the pairs plot again:
+
+```{r}
+pairs(app16, pch = 10)
+```
+
+I can observe that bicarbonate is a binary variable(having values 0 and 1). This makes me wonder whether the relationship is dependent on bicarbonate-(whether there is a different relationship when bicarbonate is 0, and a different relationship when the bicarbonate is 1), and tried visualizing the dataset using ggplot. 
+
+```{r}
+ggplot(app16, aes(x = tds+bicarbonate, y = log(uranium))) + 
+  geom_point(aes(color=factor(bicarbonate)))+labs(title = "Scatter plot of uranium vs tds + bicarbonate")
+
+```
+The scatter plot confirms that there is a distinct linear relationship when bicarbonate is zero, and when it is 1. This means that we could group the dataset by bicarbonate, and fit a linear model for the two datasets. geom_smooth is used to smooth the dataset, to capture any important patterns in the grouped data. 
+```{r}
+ggplot(app16, aes(x = tds+bicarbonate, y = log(uranium))) + 
+  geom_point() +
+  geom_smooth(method = 'lm', aes(color = factor(bicarbonate)) )+labs(title = "Plot of uranium vs tds + bicarbonate")
+```
+
+We can observe the slopes of the two lines are different. 
+Since the relationship betweeen the log(uranium) and tds, for the two bicarbonate values is differing in intercept and also in slope, I tried to fit an interaction model. This model is referred to as an "interaction model" because of the use of the explanatory variable tds*bicarbonate , the interaction (product) of the original predictor tds and the binary variable bicarbonate .
+
+Ref: Helsel and Hirsch, Chap 10 Multiple Regression. 
+
+```{r}
+fit2 <- lm(log(uranium) ~tds + bicarbonate + tds * bicarbonate, data = app16)
+summary(fit2)
+
+par(mfrow=c(2,2))
+plot(fit2)
+hist(fit2$residuals)
+```
+I chose this model as the best model that can explain the dataset. The variables tds, and bicarbonate are significant in the linear regression equation for this model. The Multiple R squared (0.5559) indicates how well a regression model predicts responses for new observations. Low p value, is an indicator that the relationship cant be rejected, and there is a good reason to accept the model. 
+
+However in the residuals vs fitted graph, there is still a clustering of the points, towards the right. But since this is a small dataset, we cannot generalize this. Maybe in a considerably large sample size, there wont be much clustering. 
+In the residuals vs leverage graph, since all the points are within the Cook's distance, the model is not sensitive to any specific outliers. 
+
+```{r}
+library(mvinfluence)
+cutoff <- 4/((nrow(app16)-length(fit2$coefficients)-2)) 
+plot(fit2, which=4, cook.levels=cutoff)
+# Influence Plot 
+influencePlot(fit2,	id.method="identify", main="Influence Plot", sub="Circle size is proportial to Cook's Distance" )
+```
+Alternatively I tried splitting the dataset into two(grouping by bicarbonate variable), and tried to fit a linear model
+
+```{r}
+bicab0 <- app16 %>%
+          filter(bicarbonate==0)
+bicab1 <- app16 %>%
+          filter(bicarbonate==1)
+          
+fit3 <- lm(log(uranium) ~ tds + bicarbonate, data=bicab0)
+par(mfrow=c(2,2))
+plot(fit3)
+hist(fit3$residuals)
+
+fit4 <- lm(log(uranium) ~ tds + bicarbonate, data=bicab1)
+par(mfrow=c(2,2))
+plot(fit4)
+hist(fit4$residuals)
+```
+It is observed that the two models fit well for the seperated data. But splitting the dataset into two, results in smaller datasets that can be used to fit a model. This could be a disadvantage, beacuse the smaller sample, may have a chance that it is not representative of the population itself. 
+
+Inorder to check points of high leverage and high influence that influence the regression coefficients, I plotted the InluencePlot for the two models. 
+```{r}
+cutoff <- 4/((nrow(app16)-length(fit3$coefficients)-2)) 
+plot(fit3, which=4, cook.levels=cutoff)
+# Influence Plot 
+influencePlot(fit3,	id.method="identify", main="Influence Plot bicab=0", sub="Circle size is proportial to Cook's Distance" )
+
+cutoff <- 4/((nrow(app16)-length(fit4$coefficients)-2)) 
+plot(fit4, which=4, cook.levels=cutoff)
+# Influence Plot 
+influencePlot(fit4,	id.method="identify", main="Influence Plot bicab =1", sub="Circle size is proportial to Cook's Distance" )
+```
+
+There are not many of the points which particularly influence the regression equation. This model is a great fit, but since the sample size we used to model it is small, there might be problems of overfitting the data with the model that we generated. 
+
+### Summary and Conclusions
+I would recommed using the interaction model 'r toString(fit2)`, that I had built with the original dataset, to answer our question, because of the following reasons:
+1. Fairly large multiple R squared value
+2. Explanatory variables are significant
+3. p value is very very small
+4. Usage of the original dataset for modelling
+
+
